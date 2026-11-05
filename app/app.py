@@ -524,13 +524,32 @@ def page_result():
     ids = [m["id"] for m in hist]
     cur = ss.get("hist_id") if ss.get("hist_id") in ids else "__now__"
     opts = ids if cur != "__now__" else ["__now__"] + ids
-    if len(opts) > 1:
-        sel = st.selectbox("분석 기록", opts, index=opts.index(cur), key=f"hist_select_{cur}_{ss.name}",
-                           format_func=lambda i: f"{ss.name} (지금 보는 데이터)" if i == "__now__"
-                           else history_label(next(m for m in hist if m["id"] == i)))
-        if sel != cur:
-            open_history(next(m for m in hist if m["id"] == sel))
-            st.rerun()
+    if hist:
+        hs1, hs2 = st.columns([4, 1], vertical_alignment="bottom")
+        if len(opts) > 1:
+            sel = hs1.selectbox("분석 기록", opts, index=opts.index(cur), key=f"hist_select_{cur}_{ss.name}",
+                                format_func=lambda i: f"{ss.name} (지금 보는 데이터)" if i == "__now__"
+                                else history_label(next(m for m in hist if m["id"] == i)))
+            if sel != cur:
+                open_history(next(m for m in hist if m["id"] == sel))
+                st.rerun()
+        with hs2.popover("기록 정리", use_container_width=True):
+            for m in hist:
+                d1, d2 = st.columns([3, 1], vertical_alignment="center")
+                d1.markdown(f"**{m['name']}**" + (" <small>(지금 보는 중)</small>" if m["id"] == ss.get("hist_id") else "")
+                            + f"<br><small>분석 {m['analyzed_at'].replace('T', ' ')[:16]}</small>", unsafe_allow_html=True)
+                if d2.button("삭제", key=f"hdel_p_{m['id']}", use_container_width=True):
+                    history.delete(m["id"])
+                    if m["id"] == ss.get("hist_id"):
+                        ss.src, ss.hist_id = None, None
+                    st.rerun()
+            st.divider()
+            if st.button("전체 삭제", key="hdel_all", use_container_width=True):
+                for m in hist:
+                    history.delete(m["id"])
+                if ss.get("hist_id") in ids:
+                    ss.src, ss.hist_id = None, None
+                st.rerun()
 
     top1, top2 = st.columns([4, 1])
     top1.markdown(f"## {ss.name}")
