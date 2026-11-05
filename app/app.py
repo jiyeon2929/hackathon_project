@@ -601,8 +601,9 @@ def page_check():
                     f"**{1 - b2.loc['ai', '남는재고'] / b2.loc['s4', '남는재고']:.0%}**, "
                     f"'지난주 판매 × 4' 대비 **{1 - b2.loc['ai', '남는재고'] / b2.loc['lag1', '남는재고']:.0%}** 줄었어요.")
         st.markdown(f"짧게 반짝 팔린 유행형 상품은 판매의 {w2.loc[identity.TREND, 'sales_share']:.0%}인데 남는 재고의 "
-                    f"**{w2.loc[identity.TREND, 'waste_share']:.0%}**를 차지했어요 "
-                    f"(판매 1개당 남는 재고 {w2.loc[identity.TREND, 'waste_per_sale']:.1f}개 vs 꾸준한 상품 {w2.loc[identity.CORE, 'waste_per_sale']:.1f}개).")
+                    f"<b>{w2.loc[identity.TREND, 'waste_share']:.0%}</b>를 차지했어요 "
+                    f"(판매 1개당 남는 재고 {w2.loc[identity.TREND, 'waste_per_sale']:.1f}개 vs 꾸준한 상품 {w2.loc[identity.CORE, 'waste_per_sale']:.1f}개).",
+                    unsafe_allow_html=True)
         fig = go.Figure(go.Bar(x=["AI 예측", "최근 4주만큼", "지난주 × 4"],
                                y=[b2.loc[k, "남는재고"] for k in ["ai", "s4", "lag1"]],
                                text=[f"{b2.loc[k, '남는재고']:,.0f}개" for k in ["ai", "s4", "lag1"]],
