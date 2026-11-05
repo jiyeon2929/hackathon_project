@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import assistant
 import brandid
 import dataprep
 import engine
@@ -695,6 +696,64 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
 <p style="color:#868e96;font-size:12px">BvAi · AI 추천 생산 = 다음 4주 예상 수요 × 여유분(허용 품절률 {ss.target:.0%} 기준)</p></body></html>"""
     st.download_button("팀 공유용 리포트 내려받기", report.encode("utf-8"), f"BvAi_리포트_{ss.name}.html", "text/html",
                        help="브라우저에서 열고 인쇄하면 PDF로도 저장할 수 있어요")
+
+    # ---- AI에게 물어보기 (OpenAI 키가 있을 때만) ----
+    if assistant.load_key():
+        import re as _re
+        st.markdown("### AI에게 물어보기")
+        st.caption("지금 분석 결과를 바탕으로 답해요. AI 답변은 참고용이고, 최종 결정은 MD가 해요.")
+        strip = lambda s: _re.sub(r"<[^>]+>", "", s)
+        ctx = [f"브랜드: {ss.name} ({'예시(가상) 데이터' if ss.virtual else '업로드한 실제 데이터'})",
+               f"판매 기록 기간: {r.weeks[0]:%Y.%m.%d} ~ {r.asof:%Y.%m.%d}, 상품 {len(r.products)}개, 판매 중 {len(rec)}개",
+               f"허용 품절률: {ss.target:.0%} (추천 생산 = 다음 4주 예상 수요 × 여유분)",
+               "[AI 분석 요약]"] + ["- " + strip(b) for b in bul]
+        ctx += ["[이번 달 할 일]"] + [f"- {strip(h)}: {strip(d)}" for _, h, d in todo]
+        ctx += ["[컬러별 결과]"] + [f"- {c}: {x.verdict}, 판매 {int(x.sold):,}개"
+                                 + (f", 판매율 {x.sell_through:.0%}" if 'sell_through' in x else "")
+                                 + (f", 할인 판매 {x.disc_share:.0%}" if 'disc_share' in x else "") for c, x in colors.iterrows()]
+        ctx += ["[디자인 유형별 결과]"] + [f"- {k}: 상품 {int(x['items'])}개, 판매 비중 {x.sales_share:.0%}"
+                                     + (f", 판매율 {x.sell_through:.0%}, 남은 재고 비중 {x.leftover_share:.0%}" if 'sell_through' in x else "")
+                                     for k, x in byd.iterrows()]
+        if len(common):
+            ctx += ["[유행 복제 상품]"] + [f"- {n} (다른 브랜드 {int(b)}곳과 비슷)"
+                                       for n, b in common.groupby(common.product_name.map(short)).similar_brands.max().items()]
+        if len(scmp):
+            ctx += ["[시즌 비교]"] + [f"- {x.category}({x.kind}): 재작년 {x.prev_total:,.0f}, 작년 {x.last_total:,.0f}"
+                                   + (f", 올 시즌 {int(x.weeks_in)}주차 작년의 {x.pace:.0%} 속도, 올 시즌 예상 {x.projection:,.0f}" if x.get('weeks_in') == x.get('weeks_in') and pd.notna(x.get('weeks_in')) else "")
+                                   for _, x in scmp.iterrows()]
+        ctx += ["[상품별 추천 (관행 생산량이 큰 순 상위 25개)]"]
+        for _, x in rec.sort_values("habit_qty", ascending=False).head(25).iterrows():
+            ctx.append(f"- {x.product_name}: 상태 {x.risk}, 최근 4주 {x.last4:,.0f}, 다음 4주 예상 {x.forecast:,.0f} "
+                       f"(80% 범위 {x.lo:,.0f}~{x.hi:,.0f}), AI 추천 생산 {x.rec_qty:,.0f}, 관행대로면 {x.habit_qty:,.0f}, "
+                       f"사이즈 {x['사이즈 배분'] or '-'}, 이유: {x['추천 이유']}")
+        context_text = "\n".join(ctx)
+
+        chat = ss.setdefault("chat", {}).setdefault(ss.name, [])
+        for msg in chat:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+        ex_cols = st.columns(3)
+        examples = ["이번 달 가장 먼저 해야 할 일은?", "유행 복제 상품은 왜 문제야?", "이번 겨울 시즌은 어떻게 준비해?"]
+        picked = None
+        for c_, q_ in zip(ex_cols, examples):
+            if c_.button(q_, key=f"ex_{q_}", use_container_width=True):
+                picked = q_
+        with st.form("ask_form", clear_on_submit=True, border=False):
+            f1, f2 = st.columns([5, 1], vertical_alignment="bottom")
+            q = f1.text_input("질문", placeholder="예: 네이비 컬러는 얼마나 더 만들면 돼?", label_visibility="collapsed")
+            sent = f2.form_submit_button("물어보기", use_container_width=True)
+        question = picked or (q.strip() if sent and q.strip() else None)
+        if question:
+            with st.spinner("AI가 분석 결과를 보고 답하는 중이에요..."):
+                try:
+                    ans = assistant.ask(question, context_text, chat)
+                except Exception as e:
+                    ans = f"지금은 답할 수 없어요. ({e})"
+            chat += [{"role": "user", "content": question}, {"role": "assistant", "content": ans}]
+            st.rerun()
+        if chat and st.button("대화 지우기", key="chat_clear"):
+            chat.clear()
+            st.rerun()
 
     # ---- 브랜드 정체성 ----
     st.markdown("### 우리 브랜드 정체성")
