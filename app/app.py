@@ -8,12 +8,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import brandid
+import dataprep
 import engine
 import identity
 import kosis
 import naver
 import season
 import style
+import weather
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
@@ -25,6 +27,8 @@ BRANDS = {
     "mongle": ("MONGLE", "🎀 러블리 · 큐트", "하트 자수 · 구름 퀼팅 · 리본", "크림 · 아이보리 · 핑크 · 라벤더"),
     "belmore": ("BELMORE", "🎩 댄디 · 클래식", "헤링본 · 핸드스티치", "네이비 · 차콜 · 그레이"),
 }
+LABEL = {"date": "날짜", "product_id": "상품코드", "qty": "판매수량", "product_name": "상품명", "category": "카테고리",
+         "color": "컬러", "price": "가격", "size": "사이즈", "produced": "생산수량"}
 SWATCH = {"블랙": "#111827", "카키": "#6b6b3a", "덕브라운": "#7c5a3a", "차콜": "#374151", "네이비": "#1e3a8a",
           "라벤더": "#b4a7d6", "버터옐로우": "#f6e27a", "민트": "#9be3c9", "크림": "#f5ecd7", "핑크": "#f4a7b9",
           "아이보리": "#f8f4e6", "스카이블루": "#8ec5f0", "카멜": "#c19a6b", "그레이": "#9ca3af", "올리브": "#708238",
@@ -103,6 +107,7 @@ header[data-testid="stHeader"] {background:#ffffff; border-bottom:1px solid #eef
 .h-item .t {font-size:1.3rem; font-weight:800; margin-bottom:4px;}
 .h-item .d {font-size:1.02rem; line-height:1.7; color:#495057 !important;}
 .h-verify {font-size:1.1rem; line-height:1.75;}
+.diag {font-size:.85rem; padding:8px 12px; border-radius:10px; background:#f8f9fa; border:1px solid #e9ecef; margin:6px 0 12px;}
 .ctitle {font-size:1.1rem; font-weight:800; margin:28px 0 8px;}
 .ctitle small {font-size:.85rem; font-weight:500; margin-left:6px;}
 .stApp .ctitle small {color:#868e96 !important;}
@@ -199,6 +204,31 @@ def market_trend(keywords):
     return tr, naver.signals(tr)
 
 
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def wx():
+    """서울 2주 기온 예보 vs 평년 (실패하면 None)"""
+    try:
+        return weather.outlook()
+    except Exception:
+        return None
+
+
+def weather_box(compact=False):
+    o = wx()
+    if o is None:
+        return
+    st.markdown(f'<div class="diag"><b>날씨 신호</b> · {weather.message(o)}</div>', unsafe_allow_html=True)
+    if not compact:
+        d = o["daily"]
+        fig = go.Figure()
+        fig.add_scatter(x=d.index, y=d["평년"], name="평년 (최근 5년)", line=dict(color=GRAY, dash="dot"))
+        fig.add_scatter(x=d.index, y=d["예보"], name="예보", line=dict(color=GREEN_B, width=3))
+        fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.2),
+                          yaxis_title="일평균 기온 (℃)")
+        st.plotly_chart(fig, width="stretch")
+        st.caption("Open-Meteo 날씨 예보·과거 기록 (서울 기준)")
+
+
 @st.cache_data(show_spinner=False)
 def homogenization():
     market = load_csv("market_catalog.csv")
@@ -263,20 +293,32 @@ def page_home():
 # ================= 분석 시작 =================
 def page_start():
     st.markdown("### 분석 시작")
-    up = st.file_uploader("① 판매 기록 (필수, CSV)", type=["csv"])
-    st.caption("필수 열: date(날짜), product_id(상품코드), qty(판매수량) · 있으면 좋은 열: product_name, category, color, price")
-    up2 = st.file_uploader("② 생산(입고) 기록 (선택, CSV) — 있으면 컬러·디자인별 판매율과 실제 남은 재고까지 분석해요", type=["csv"])
-    st.caption("열: product_id(상품코드), produced(생산·입고 수량)")
-    if up is not None and st.button("분석 시작", type="primary"):
-        df_up = pd.read_csv(up, dtype={"product_id": str})
+    up = st.file_uploader("① 판매 기록 (필수, CSV 또는 엑셀)", type=["csv", "xlsx", "xls"])
+    st.caption("필수: 날짜, 상품코드, 판매수량 · 있으면 좋은 것: 상품명, 카테고리, 컬러, 가격, 사이즈 — "
+               "'판매일자', '품번', '수량'처럼 회사마다 다른 열 이름도 자동으로 알아봐요")
+    up2 = st.file_uploader("② 생산(입고) 기록 (선택, CSV 또는 엑셀) — 있으면 컬러·디자인별 판매율과 실제 남은 재고까지 분석해요",
+                           type=["csv", "xlsx", "xls"])
+    st.caption("상품코드, 생산(입고) 수량")
+    df_up = prod_up = None
+    if up is not None:
+        df_up, mp = dataprep.standardize(dataprep.read_any(up))
         errs = engine.validate(df_up)
+        if mp:
+            st.success("이렇게 읽었어요: " + " · ".join(f"{k} → {LABEL.get(v, v)}" for k, v in mp.items()))
         if errs:
-            st.error(" / ".join(errs))
-        else:
-            ss.src, ss.df, ss.name, ss.virtual = "upload", df_up, Path(up.name).stem, False
-            ss.prod = pd.read_csv(up2, dtype={"product_id": str}) if up2 is not None else None
-            ss.brand = next((nm for nm, *_ in BRANDS.values() if nm.lower() in up.name.lower()), None)
-            go_results()
+            st.error("필수 열을 찾지 못했어요: 날짜, 상품코드, 판매수량 열이 있는지 확인해주세요. "
+                     f"(파일의 열: {', '.join(map(str, df_up.columns[:12]))})")
+            df_up = None
+    if up2 is not None:
+        prod_up, mp2 = dataprep.standardize(dataprep.read_any(up2))
+        if not {"product_id", "produced"} <= set(prod_up.columns):
+            st.error("생산 기록에서 상품코드와 생산(입고) 수량 열을 찾지 못했어요.")
+            prod_up = None
+    if df_up is not None and st.button("분석 시작", type="primary"):
+        ss.src, ss.df, ss.name, ss.virtual = "upload", df_up, Path(up.name).stem, False
+        ss.prod = prod_up
+        ss.brand = next((nm for nm, *_ in BRANDS.values() if nm.lower() in up.name.lower()), None)
+        go_results()
 
     st.markdown("##### 예시 브랜드 살펴보기")
     cols = st.columns(3)
@@ -335,6 +377,88 @@ def page_result():
     if sig_mk is not None:
         rec = rec.merge(sig_mk[["keyword", "momentum_rel"]].rename(columns={"keyword": "시장키워드"}), on="시장키워드", how="left")
 
+    # ---- 데이터 진단 + 상품별 신뢰도 ----
+    diag, conf = dataprep.diagnose(ss.df, r.S, r.weeks, ss.get("prod"))
+    rec["신뢰도"] = rec.product_id.map(dict(zip(r.products.index, conf)))
+
+    # ---- 상품별 추천 이유 (실무자가 AI 숫자를 믿고 쓸 수 있도록 근거 표시) ----
+    kinds = season.kind_of(season.daily(ss.df))
+    mon = r.asof.month
+    weak_c = set(colors[colors.verdict == "반응 약함 ⬇"].index)
+    liked_c = set(colors[colors.verdict == "고객 선호 ⬆"].index)
+    pcolor = P["color"].to_dict()
+
+    def why(x):
+        rs = []
+        if x.trend <= -0.3:
+            rs.append(f"최근 4주보다 수요 {x.trend:+.0%} 예상")
+        elif x.trend >= 0.3:
+            rs.append(f"최근 4주보다 수요 {x.trend:+.0%} 예상")
+        else:
+            rs.append("최근과 비슷한 수요")
+        k = kinds.get(x.get("category"))
+        if k == "겨울":
+            rs.append({10: "겨울 시즌 시작", 11: "겨울 시즌 시작", 12: "겨울 성수기", 1: "겨울 성수기", 2: "겨울 시즌 막바지",
+                       3: "겨울 시즌 끝"}.get(mon, "겨울 상품 비시즌"))
+        elif k == "여름":
+            rs.append({5: "여름 시즌 시작", 6: "여름 성수기", 7: "여름 성수기", 8: "여름 시즌 막바지"}.get(mon, "여름 상품 비시즌"))
+        if x.design == "유행 복제":
+            rs.append("유행 복제 상품")
+        elif x.design == "기본 아이템":
+            rs.append("기본 아이템")
+        c = pcolor.get(x.product_id)
+        if c in weak_c:
+            rs.append(f"{c}: 반응 약한 컬러")
+        elif c in liked_c:
+            rs.append(f"{c}: 고객 선호 컬러")
+        m = x.get("momentum_rel", np.nan)
+        if pd.notna(m) and abs(m) >= 0.2:
+            rs.append(f"시장 관심 {m:+.0%}")
+        if x["신뢰도"] == "낮음":
+            rs.append("판매 기록이 짧아 신뢰도 낮음")
+        return " · ".join(rs)
+
+    rec["추천 이유"] = rec.apply(why, axis=1)
+
+    # ---- 사이즈 배분 (사이즈 정보가 있을 때): 상품별 최근 26주 사이즈 비율, 기록이 적으면 카테고리 비율 ----
+    size_order = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "FREE"]
+    size_share = {}
+    if "size" in ss.df:
+        sd = ss.df.copy()
+        sd["date"] = pd.to_datetime(sd["date"])
+        sd = sd[sd.date > sd.date.max() - pd.Timedelta(weeks=26)]
+        sd["product_id"] = sd["product_id"].astype(str)
+        by_p = sd.groupby(["product_id", "size"]).qty.sum().unstack(fill_value=0)
+        by_c = sd.groupby(["category", "size"]).qty.sum().unstack(fill_value=0) if "category" in sd else None
+        pcat = sd.groupby("product_id").category.first() if "category" in sd else pd.Series(dtype=str)
+        for pid in rec.product_id:
+            row = by_p.loc[pid] if pid in by_p.index else None
+            if (row is None or row.sum() < 30) and by_c is not None and pcat.get(pid) in by_c.index:
+                row = by_c.loc[pcat[pid]]
+            if row is not None and row.sum() > 0:
+                row = row[row > 0]
+                size_share[pid] = (row / row.sum()).reindex([s for s in size_order if s in row.index] +
+                                                            [s for s in row.index if s not in size_order])
+
+    brand_size = None
+    if "size" in ss.df:
+        bs = sd[sd["size"] != "FREE"].groupby("size").qty.sum()
+        if len(bs) >= 2:
+            brand_size = (bs / bs.sum()).reindex([s for s in size_order if s in bs.index])
+
+    def size_split(pid, qty):
+        sh = size_share.get(pid)
+        if sh is None or qty <= 0:
+            return None
+        raw = sh * qty
+        n = np.floor(raw).astype(int)
+        for s in (raw - n).sort_values(ascending=False).index[: int(qty - n.sum())]:
+            n[s] += 1
+        return n
+
+    rec["사이즈 배분"] = [" · ".join(f"{s} {v}" for s, v in sp.items()) if (sp := size_split(p, int(q))) is not None else ""
+                     for p, q in zip(rec.product_id, rec.rec_qty)]
+
     top1, top2 = st.columns([4, 1])
     top1.markdown(f"## {ss.name}")
     top1.caption(f"판매 기록 {r.weeks[0]:%Y.%m.%d} ~ {r.asof:%Y.%m.%d} · 상품 {len(r.products)}개 · 판매 중 {len(rec)}개"
@@ -343,6 +467,18 @@ def page_result():
         st.switch_page(PAGE_START)
     if ss.virtual:
         st.markdown('<span class="badge">예시 데이터</span>', unsafe_allow_html=True)
+
+    # 데이터 점검 (예측을 얼마나 믿어도 되는지)
+    cc = diag["conf_counts"]
+    miss = (" · 없는 정보: " + ", ".join(diag["missing"])) if diag["missing"] else ""
+    extra = []
+    if diag["short_hist"]:
+        extra.append(f"판매 기록 8주 미만 {diag['short_hist']}개")
+    if diag.get("prod_missing"):
+        extra.append(f"생산 기록 없는 상품 {diag['prod_missing']}개")
+    st.markdown(f'<div class="diag"><b>데이터 점검</b> · {diag["weeks"]}주 기록 · 상품 {diag["products"]}개 · '
+                f'예측 신뢰도 높음 {cc.get("높음", 0)} / 보통 {cc.get("보통", 0)} / 낮음 {cc.get("낮음", 0)}{miss}'
+                + (" · " + " · ".join(extra) if extra else "") + '</div>', unsafe_allow_html=True)
 
     # ---- AI 분석 요약 ----
     save_month = max(bt.loc["s4", "남는재고금액"] - bt.loc["ai", "남는재고금액"], 0) / 3
@@ -366,6 +502,13 @@ def page_result():
         st_w = f"판매율 {weak.sold.sum() / weak.produced.sum():.0%}" if has_prod else f"할인 판매 {weak.disc_share.mean():.0%}"
         bul.append(f"<b>{', '.join(weak.index[:3])}</b> 컬러는 고객 반응이 약해요 ({st_w}). "
                    + (f"반대로 <b>{', '.join(liked.index)}</b>는 시그니처가 아닌데도 거의 품절 → 늘려볼 만해요." if len(liked) else ""))
+    if brand_size is not None:
+        top2 = brand_size.sort_values(ascending=False).head(2)
+        low = brand_size.idxmin()
+        eq = 1 / len(brand_size)
+        bul.append(f"사이즈별로 보면 <b>{'·'.join(top2.index)} 사이즈</b>가 판매의 <b>{top2.sum():.0%}</b>예요. "
+                   f"사이즈를 똑같이 나눠 만들면 {low} 사이즈는 팔리는 양의 <b>{eq / brand_size[low]:.1f}배</b>를 만들게 돼요. "
+                   "추천표의 사이즈 배분을 참고하세요.")
     bul.append(f"다음 4주 예상 판매 <b>{rec.forecast.sum():,.0f}개</b>. AI 추천대로 만들면 관행 대비 "
                f"<b>월 약 {save_units:,.0f}벌, {won(save_month)}</b>어치를 덜 남겨요.")
     if len(scmp) and "projection" in scmp:
@@ -418,21 +561,42 @@ def page_result():
     for c, h, d in todo:
         st.markdown(f'<div class="todo" style="--c:{c}"><div class="h">{h}</div><div class="d">{d}</div></div>', unsafe_allow_html=True)
 
+    # ---- 팀 공유용 리포트 (엑셀·메일로 흩어지는 문제 보완) ----
+    md_now = ss.get("md_edits", {}).get(ss.name, {})
+    top_rec = rec.sort_values("habit_qty", ascending=False).head(30)
+    rows_html = "".join(
+        f"<tr><td>{x.product_name}</td><td>{x.risk}</td><td style='text-align:right'>{x.forecast:,.0f}</td>"
+        f"<td style='text-align:right'>{x.rec_qty:,.0f}</td><td style='text-align:right'>{md_now.get(x.product_id, {}).get('qty', int(x.rec_qty)):,}</td>"
+        f"<td>{x['추천 이유']}</td><td>{md_now.get(x.product_id, {}).get('memo', '')}</td></tr>" for _, x in top_rec.iterrows())
+    report = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>BvAi 리포트 - {ss.name}</title>
+<style>body{{font-family:sans-serif;max-width:900px;margin:30px auto;color:#1f2328;line-height:1.6}}
+h1{{color:#2F6F5E}} .box{{background:#EEF5F2;border-radius:10px;padding:12px 18px}}
+table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px solid #dee2e6;padding:6px}} th{{background:#eceef1}}
+.todo{{border-left:4px solid #2F6F5E;padding:6px 12px;margin:6px 0;background:#f8f9fa}}</style></head><body>
+<h1>BvAi 분석 리포트 · {ss.name}</h1>
+<p>판매 기록 {r.weeks[0]:%Y.%m.%d} ~ {r.asof:%Y.%m.%d} · 상품 {len(r.products)}개 · 작성일 {pd.Timestamp.today():%Y.%m.%d}</p>
+<h2>AI 분석 요약</h2><div class="box"><ul>{"".join(f"<li>{b}</li>" for b in bul)}</ul></div>
+<h2>이번 달 할 일</h2>{"".join(f'<div class="todo"><b>{h}</b><br>{d}</div>' for _, h, d in todo)}
+<h2>상품별 추천 생산량 (상위 30개)</h2><table><tr><th>상품</th><th>상태</th><th>다음 4주 예상</th><th>AI 추천</th><th>MD 확정</th><th>추천 이유</th><th>메모</th></tr>{rows_html}</table>
+<p style="color:#868e96;font-size:12px">BvAi · AI 추천 생산 = 다음 4주 예상 수요 × 여유분(허용 품절률 {ss.target:.0%} 기준)</p></body></html>"""
+    st.download_button("팀 공유용 리포트 내려받기", report.encode("utf-8"), f"BvAi_리포트_{ss.name}.html", "text/html",
+                       help="브라우저에서 열고 인쇄하면 PDF로도 저장할 수 있어요")
+
     # ---- 브랜드 정체성 ----
-    st.markdown("### 🧬 우리 브랜드 정체성")
+    st.markdown("### 우리 브랜드 정체성")
     ca, cb = st.columns(2)
     with ca:
         other = colors[~colors.is_sig]
         oth_html = "".join(swatch(c, f" <small>{v}</small>") for c, v in other.verdict.items())
-        st.markdown(f'<div class="idcard"><div class="h">🎨 시그니처 컬러</div><div style="margin:4px 0 10px">{"".join(swatch(c) for c in sig)}</div>'
+        st.markdown(f'<div class="idcard"><div class="h">시그니처 컬러</div><div style="margin:4px 0 10px">{"".join(swatch(c) for c in sig)}</div>'
                     f'<div class="h">그 밖의 컬러 · 고객 반응</div><div>{oth_html or "없음"}</div></div>', unsafe_allow_html=True)
     with cb:
         chips = "".join(f'<span class="chip">{n} · 다른 브랜드 {int(b)}곳</span>'
                         for n, b in common.groupby(common.product_name.map(short)).similar_brands.max().items())
-        st_chips = "".join(f'<span class="sw">👍 {n}</span>' for n in staple.product_name.map(short).unique())
-        st.markdown(f'<div class="idcard"><div class="h">✂️ 디자인</div>'
+        st_chips = "".join(f'<span class="sw">{n}</span>' for n in staple.product_name.map(short).unique())
+        st.markdown(f'<div class="idcard"><div class="h">디자인</div>'
                     f'<div class="big">시그니처 {int((P.design == "시그니처").sum())} · 기본 {len(staple)} · 유행 복제 {len(common)}</div>'
-                    f'<div class="h">⚠️ 유행 복제 (다른 브랜드와 겹치고, 반짝 후 안 팔림)</div>{chips or "없음 👍"}'
+                    f'<div class="h">유행 복제 (다른 브랜드와 겹치고, 반짝 후 안 팔림)</div>{chips or "없음"}'
                     f'<div class="h" style="margin-top:8px">기본 아이템 (어디에나 있지만 꾸준히 잘 팔림 → 유지)</div>'
                     f'{st_chips or "<small>없음</small>"}</div>', unsafe_allow_html=True)
     st.write("")
@@ -472,6 +636,7 @@ def page_result():
     if len(scmp):
         st.markdown("### ❄️ 시즌 상품: 작년 vs 올해")
         st.caption("겨울 옷은 겨울끼리, 여름 옷은 여름끼리 비교해요. 겨울 = 10월~3월, 여름 = 5월~8월")
+        weather_box(compact=True)
         t = scmp.copy()
         show = pd.DataFrame({
             "카테고리": t.category, "시즌": t.kind, "재작년": t.prev_total.round(0), "작년": t.last_total.round(0), "작년 증감": t.last_yoy,
@@ -494,6 +659,54 @@ def page_result():
         st.plotly_chart(fig, width="stretch")
         st.caption("올 시즌 예상 = 작년 시즌 판매 × 올해 진행 속도. 시즌 초반(12주 전)에는 작년 수준 쪽으로 보수적으로 반영해요.")
 
+    # ---- 신상품 첫 물량 (판매 이력이 없는 상품) ----
+    st.markdown("### 신상품 첫 물량 계산")
+    st.caption("판매 기록이 없는 신상품은 우리 브랜드의 비슷한 상품이 출시 첫 4주에 얼마나 팔렸는지로 계산해요.")
+    S_ = r.S
+    nz = S_ > 0
+    first = np.where(nz.any(1), nz.argmax(1), S_.shape[1])
+    ok = (S_.shape[1] - first) >= 4
+    launch4 = pd.Series([S_[i, f:f + 4].sum() if o else np.nan for i, (f, o) in enumerate(zip(first, ok))], index=r.products.index)
+    launch4 = launch4[launch4.index.isin(P.index)].dropna()
+    LP = P.loc[launch4.index].assign(l4=launch4)
+    if "category" in LP and len(LP):
+        n1, n2, n3 = st.columns(3)
+        cat_sel = n1.selectbox("카테고리", sorted(LP.category.dropna().unique()))
+        col_opts = list(colors.index)
+        col_sel = n2.selectbox("컬러", col_opts, index=0)
+        des_sel = n3.selectbox("디자인", ["시그니처", "기본 아이템", "유행 복제"],
+                               help="유행 복제: 다른 브랜드에도 많은 유행 디자인")
+        an = LP[LP.category == cat_sel]
+        an_d = an[an.design == des_sel]
+        base = an_d if len(an_d) >= 2 else an
+        if len(base):
+            med, lo, hi = base.l4.median(), base.l4.quantile(.25), base.l4.quantile(.75)
+            cv_ = colors.velocity
+            cfac = float(np.clip(cv_.get(col_sel, cv_.mean()) / max(cv_.mean(), 1e-9), 0.5, 1.5))
+            dfac = 0.7 if (des_sel == "유행 복제" and len(an_d) < 2) else 1.0
+            est = med * cfac * dfac
+            first_qty = est * r.k["ai"] * (0.6 if des_sel == "유행 복제" else 1.0)
+            k1, k2, k3 = st.columns(3)
+            kpi(k1, "첫 4주 예상 판매", f"{est:,.0f}개", f"비슷한 상품 범위 {lo * cfac * dfac:,.0f}~{hi * cfac * dfac:,.0f}개")
+            kpi(k2, "첫 생산 추천", f"{first_qty:,.0f}개",
+                "유행 복제라 60%만 먼저, 반응 보고 추가" if des_sel == "유행 복제" else "예상 수요 × 여유분")
+            kpi(k3, "참고한 상품", f"{len(base)}개", f"{cat_sel}" + (f" · {des_sel}" if base is an_d else " 전체"))
+            note = []
+            k_ = kinds.get(cat_sel)
+            if k_ == "겨울" and mon in (4, 5, 6, 7, 8):
+                note.append("겨울 상품을 비시즌에 출시하면 첫 판매가 이보다 적을 수 있어요.")
+            if k_ == "여름" and mon in (10, 11, 12, 1, 2):
+                note.append("여름 상품을 비시즌에 출시하면 첫 판매가 이보다 적을 수 있어요.")
+            if col_sel in weak_c:
+                note.append(f"{col_sel}은(는) 이 브랜드에서 반응이 약했던 컬러예요.")
+            if col_sel in liked_c:
+                note.append(f"{col_sel}은(는) 고객 선호 컬러라 품절에 주의하세요.")
+            st.caption(f"컬러 보정 ×{cfac:.2f} (컬러별 판매 속도 기준)" + (" · " + " ".join(note) if note else ""))
+        else:
+            st.info("이 카테고리에는 참고할 상품이 아직 없어요.")
+    else:
+        st.info("카테고리 정보가 있으면 신상품 첫 물량을 계산할 수 있어요.")
+
     # ---- 자세히 ----
     st.markdown("### 더 자세히")
     names = dict(zip(rec.product_id, rec.product_name))
@@ -504,17 +717,40 @@ def page_result():
         view = rec[rec.risk.isin(risk_sel)]
         if q:
             view = view[view.product_name.str.contains(q, case=False, na=False)]
+        md = ss.setdefault("md_edits", {}).setdefault(ss.name, {})
+        view = view.sort_values("habit_qty", ascending=False)
         tb = pd.DataFrame({
-            "상태": view.risk.map({"과잉생산 위험": "🔴 줄이기", "품절 위험": "🟠 늘리기", "적정": "🟢 적정"}),
-            "상품": view.product_name, "디자인": view.design, "컬러": view.color_group,
-            "최근 4주": view.last4.astype(int), "다음 4주 예상": view.forecast.round(0).astype(int),
-            "추천 생산": view.rec_qty.astype(int), "관행대로면": view.habit_qty.astype(int)})
-        cfg = {}
-        if "momentum_rel" in view:
-            tb["시장 관심(4주)"] = view.momentum_rel.values
-            cfg["시장 관심(4주)"] = st.column_config.NumberColumn(format="percent", help="네이버 쇼핑 클릭, 직전 4주 대비, 패션 전체 대비")
-        st.dataframe(tb.sort_values("관행대로면", ascending=False), hide_index=True, width="stretch", column_config=cfg)
-        st.download_button("추천표 내려받기", tb.to_csv(index=False).encode("utf-8-sig"), "추천생산량.csv", "text/csv")
+            "상품코드": view.product_id.values,
+            "상태": view.risk.map({"과잉생산 위험": "🔴 줄이기", "품절 위험": "🟠 늘리기", "적정": "🟢 적정"}).values,
+            "상품": view.product_name.values,
+            "다음 4주 예상": view.forecast.round(0).astype(int).values,
+            "AI 추천 생산": view.rec_qty.astype(int).values,
+            "MD 확정": [md.get(p, {}).get("qty", int(q)) for p, q in zip(view.product_id, view.rec_qty)],
+            "메모": [md.get(p, {}).get("memo", "") for p in view.product_id],
+            "사이즈 배분": view["사이즈 배분"].values,
+            "추천 이유": view["추천 이유"].values,
+            "신뢰도": view["신뢰도"].values,
+            "관행대로면": view.habit_qty.astype(int).values})
+        st.caption("AI 추천 생산 = 다음 4주 예상 수요 × 여유분(허용 품절률 기준). "
+                   "**MD 확정**과 **메모** 칸은 직접 고칠 수 있어요. 고친 값은 내려받는 파일에 함께 저장돼요.")
+        edited = st.data_editor(
+            tb, hide_index=True, width="stretch", key=f"md_editor_{ss.name}",
+            disabled=[c for c in tb.columns if c not in ("MD 확정", "메모")],
+            column_config={"상품코드": None,
+                           "MD 확정": st.column_config.NumberColumn(min_value=0, step=1, help="최종 생산 수량을 직접 정해요"),
+                           "메모": st.column_config.TextColumn(help="왜 바꿨는지 적어두면 다음 기획 때 참고돼요"),
+                           "추천 이유": st.column_config.TextColumn(width="large")})
+        for _, e in edited.iterrows():
+            if int(e["MD 확정"]) != int(e["AI 추천 생산"]) or e["메모"]:
+                md[e["상품코드"]] = {"qty": int(e["MD 확정"]), "memo": e["메모"]}
+            else:
+                md.pop(e["상품코드"], None)
+        n_changed = sum(1 for v in md.values() if v)
+        if n_changed:
+            st.caption(f"MD가 직접 고친 상품 {n_changed}개 · AI 추천 합계 {int(edited['AI 추천 생산'].sum()):,}개 → "
+                       f"MD 확정 합계 {int(edited['MD 확정'].sum()):,}개")
+        st.download_button("추천표 내려받기 (MD 확정 포함)", edited.to_csv(index=False).encode("utf-8-sig"),
+                           "추천생산량.csv", "text/csv")
     with st.expander("🔍 상품 하나씩 보기"):
         ids = list(r.products.index)
         pid = st.selectbox("상품", rec.sort_values("forecast", ascending=False).product_id, format_func=lambda x: names.get(x, x))
@@ -528,6 +764,14 @@ def page_result():
         st.plotly_chart(fig, width="stretch")
         st.markdown(f"**{row.product_name}** ({row.design} · {row.color_group} 컬러) · 최근 4주 {row.last4:,.0f}개 → "
                     f"다음 4주 **{row.forecast:,.0f}개** ({row.trend:+.0%}) · 추천 생산 **{row.rec_qty:,.0f}개**")
+        st.caption(f"추천 이유: {row['추천 이유']} · 예측 신뢰도 {row['신뢰도']}")
+        sp = size_split(pid, int(row.rec_qty))
+        if sp is not None:
+            fig = go.Figure(go.Bar(x=list(sp.index), y=list(sp.values), text=[f"{v}개" for v in sp.values],
+                                   textposition="outside", marker_color=GREEN_B))
+            fig.update_layout(height=230, margin=dict(l=10, r=10, t=40, b=10), yaxis=dict(range=[0, max(sp.values) * 1.25 + 1]),
+                              title=dict(text="사이즈별 추천 생산 (최근 26주 판매 비율 기준)", font=dict(size=13)))
+            st.plotly_chart(fig, width="stretch")
     with st.expander("⚙️ 설정"):
         new_t = st.slider("허용 품절률", 5, 30, int(ss.target * 100), step=5, format="%d%%",
                           help="품절을 얼마나 감수할지. 낮출수록 여유분을 더 만들어요.") / 100
@@ -589,6 +833,9 @@ def page_market():
         fig.update_layout(height=260, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.15), yaxis_title="최고점=100")
         st.plotly_chart(fig, width="stretch")
         st.caption("네이버 데이터랩 쇼핑인사이트(NAVER API HUB) · 패션의류 카테고리 클릭")
+    if wx() is not None:
+        st.markdown('<div class="ctitle">날씨: 앞으로 2주 서울 기온 <small>예보 vs 평년</small></div>', unsafe_allow_html=True)
+        weather_box()
 
 
 # ================= AI 검증 =================

@@ -78,15 +78,30 @@ BRANDS = {
 }
 
 
+SIZE_CURVE = {  # 브랜드별 사이즈 비율 (스트릿=오버핏 L·XL, 러블리=XS~M, 댄디=M·L)
+    "boltwork": (["S", "M", "L", "XL"], [0.10, 0.25, 0.35, 0.30]),
+    "mongle": (["XS", "S", "M", "L"], [0.15, 0.37, 0.33, 0.15]),
+    "belmore": (["S", "M", "L", "XL"], [0.13, 0.36, 0.36, 0.15]),
+}
+FREE_SIZE = {"모자"}
+
+
 def make(slug, cfg, seed):
     rng = np.random.default_rng(seed)
+    rng_size = np.random.default_rng(seed + 1000)   # 사이즈 분할은 별도 난수 (다른 결과에 영향 없게)
+    sizes, probs = SIZE_CURVE[slug]
     rows, prod, key = [], [], []
 
     def emit(pid, name, cat, color, price_arr, lam, factor, design, color_type):
         lam = lam * dow * rng.gamma(6, 1 / 6, len(days))
         q = rng.poisson(np.clip(lam, 0, None))
         for d, qq, p in zip(days[q > 0], q[q > 0], price_arr[q > 0]):
-            rows.append((d.date(), pid, f"{name} / {color}", cat, color, int(qq), int(round(p, -2))))
+            if cat in FREE_SIZE:
+                rows.append((d.date(), pid, f"{name} / {color}", cat, color, "FREE", int(qq), int(round(p, -2))))
+                continue
+            for sz, sq in zip(sizes, rng_size.multinomial(int(qq), probs)):
+                if sq:
+                    rows.append((d.date(), pid, f"{name} / {color}", cat, color, sz, int(sq), int(round(p, -2))))
         sold = int(q.sum())
         prod.append((pid, int(np.ceil(sold * factor / 10) * 10)))
         key.append((pid, design, color_type))
@@ -145,7 +160,7 @@ def make(slug, cfg, seed):
             ctype = "시그니처 컬러" if color in cfg["sig_colors"] else "유행 컬러"
             emit(nid(), nm, cat, color, pr, lam, rng.uniform(1.6, 2.2), "흔한 디자인", ctype)
 
-    df = pd.DataFrame(rows, columns=["date", "product_id", "product_name", "category", "color", "qty", "price"])
+    df = pd.DataFrame(rows, columns=["date", "product_id", "product_name", "category", "color", "size", "qty", "price"])
     df.sort_values(["date", "product_id"]).to_csv(OUT / f"virtual_{slug}.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(prod, columns=["product_id", "produced"]).to_csv(
         OUT / f"virtual_{slug}_production.csv", index=False, encoding="utf-8-sig")
