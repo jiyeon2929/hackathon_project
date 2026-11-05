@@ -407,15 +407,30 @@ def need_data():
 
 
 def run_current():
+    # 분석이 오래 걸릴 때(상품이 많은 데이터를 처음 열 때) 예전 화면이 남아 헷갈리지 않도록 맨 위에 크게 안내
+    loading = st.empty()
+    n_prod = ss.df["product_id"].nunique() if "product_id" in ss.df else 0
+    loading.info(f"**{ss.name}** 분석을 불러오는 중이에요… "
+                 + (f"상품이 {n_prod:,}개라 처음 열 때는 20초 정도 걸려요. " if n_prod > 1000 else "")
+                 + "아래는 이전 화면이에요.")
     try:
         with st.spinner("AI가 판매 기록을 읽고 있어요..."):
-            return analyze(ss.df, ss.get("prod"), ss.target, ss.get("brand"))
+            out = analyze(ss.df, ss.get("prod"), ss.target, ss.get("brand"))
+        loading.empty()
+        return out
     except ValueError as e:
+        loading.empty()
         st.error(str(e))
         st.stop()
 
 
 def page_result():
+    # 주소에 ?demo=boltwork 처럼 붙이면 예시 브랜드 결과를 바로 열기 (시연용)
+    demo = st.query_params.get("demo")
+    if ss.src is None and demo in BRANDS:
+        nm = BRANDS[demo][0]
+        ss.src, ss.df, ss.name, ss.virtual = "virtual", load_csv(f"virtual_{demo}.csv"), nm, True
+        ss.prod, ss.brand, ss.hist_id = load_csv(f"virtual_{demo}_production.csv"), nm, None
     need_data()
     r, idn, bid, prof, (scmp, curves) = run_current()
     P = bid["products"]
@@ -527,12 +542,17 @@ def page_result():
     if hist:
         hs1, hs2 = st.columns([4, 1], vertical_alignment="bottom")
         if len(opts) > 1:
-            sel = hs1.selectbox("분석 기록", opts, index=opts.index(cur), key=f"hist_select_{cur}_{ss.name}",
-                                format_func=lambda i: f"{ss.name} (지금 보는 데이터)" if i == "__now__"
-                                else history_label(next(m for m in hist if m["id"] == i)))
-            if sel != cur:
-                open_history(next(m for m in hist if m["id"] == sel))
-                st.rerun()
+            skey = f"hist_select_{cur}_{ss.name}"
+
+            def _switch(k=skey, c=cur, h=hist):
+                # 고르는 즉시(다음 실행 전에) 새 기록으로 바꿔서, 이전 데이터를 다시 분석하지 않게
+                v = st.session_state.get(k)
+                if v and v != c and v != "__now__":
+                    open_history(next(m for m in h if m["id"] == v))
+
+            hs1.selectbox("분석 기록", opts, index=opts.index(cur), key=skey, on_change=_switch,
+                          format_func=lambda i: f"{ss.name} (지금 보는 데이터)" if i == "__now__"
+                          else history_label(next(m for m in hist if m["id"] == i)))
         with hs2.popover("기록 정리", use_container_width=True):
             for m in hist:
                 d1, d2 = st.columns([3, 1], vertical_alignment="center")
@@ -903,7 +923,7 @@ def page_market():
         ind, sm = None, None
         st.caption(f"통계청 데이터를 불러오지 못했어요: {e}")
     if ind is not None:
-        st.markdown('<div class="ctitle">의류 산업: 감으로 만들고 → 재고가 쌓이고 → 뒤늦게 감산하는 사이클</div>',
+        st.markdown('<div class="ctitle">의류 산업: 재고가 쌓이면 → 뒤늦게 생산을 줄이는 사이클</div>',
                     unsafe_allow_html=True)
         k1, k2, k3 = st.columns(3)
         peak = ind["재고율"].idxmax()
