@@ -1,0 +1,19 @@
+# 비밀 키 (절대 올리지 않음)
+.env
+.env.*
+kaggle.json
+
+# 원본 데이터 (H&M: Kaggle 대회 규칙상 재배포 금지, 용량 큼)
+data/
+app/demo_sales.csv
+
+# 실행 환경 · 임시 파일
+.venv/
+__pycache__/
+*.pyc
+outputs/
+
+# 예전 실험용 데이터 (앱에서 사용 안 함)
+app/virtual_brand_sales.csv
+app/virtual_brand_answer_key.csv
+!.env.example
