@@ -17,3 +17,6 @@ outputs/
 app/virtual_brand_sales.csv
 app/virtual_brand_answer_key.csv
 !.env.example
+
+# 내 컴퓨터의 분석 기록 (업로드한 판매 데이터 포함)
+history/

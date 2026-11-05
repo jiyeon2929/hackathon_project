@@ -21,6 +21,7 @@ class Result:
     bt_detail: pd.DataFrame        # 백테스트 상품-시점 단위 결과
     k: dict                        # 방법별 여유 배수
     importance: pd.Series
+    interval: dict = None          # 예측 범위 (전체 합계 P10/P90, 실제 적중률)
 
 
 def validate(df: pd.DataFrame) -> list[str]:
@@ -40,6 +41,7 @@ def _weekly(df):
     ids, idx = np.unique(df["product_id"].values, return_inverse=True)
     S = np.zeros((len(ids), W), np.float32)
     np.add.at(S, (idx, df["w"].values), df["qty"].values)
+    S = np.clip(S, 0, None)   # 반품이 판매보다 많은 주(순판매 음수)는 0으로
 
     P = np.full((len(ids), W), np.nan, np.float32)
     if "price" in df.columns:
@@ -151,6 +153,19 @@ def run(df: pd.DataFrame, stockout_target: float = 0.15) -> Result:
                             ["과잉생산 위험", "품절 위험"], "적정")
     rec = rec.rename(columns={"s4": "last4"})
 
+    # ---- 예측 범위 (80%): 백테스트에서 AI 예측이 실제와 어긋난 비율(로그 오차)의 10~90% 구간을 적용 ----
+    resid = np.log1p(te.y.values) - np.log1p(te.ai.values)
+    q_lo, q_hi = np.quantile(resid, [0.10, 0.90])
+    rec["lo"] = np.clip(np.expm1(np.log1p(rec.forecast) + q_lo), 0, None)
+    rec["hi"] = np.expm1(np.log1p(rec.forecast) + q_hi)
+    covered = ((te.y.values >= np.expm1(np.log1p(te.ai.values) + q_lo)) &
+               (te.y.values <= np.expm1(np.log1p(te.ai.values) + q_hi))).mean()
+    # 전체 합계 범위: 상품마다 과거 오차를 무작위로 뽑아 1,000번 더해봄
+    rng = np.random.default_rng(0)
+    sims = np.expm1(np.log1p(rec.forecast.values)[None, :] + rng.choice(resid, size=(1000, len(rec)))).clip(min=0).sum(1)
+    interval = {"total_lo": float(np.quantile(sims, 0.10)), "total_hi": float(np.quantile(sims, 0.90)),
+                "coverage": float(covered), "level": 0.8}
+
     imp = pd.Series(m2.booster_.feature_importance("gain"), index=feats)
     te_out = te[["i", "t", "y", "ai", "s4", "lag1"]].copy()
-    return Result(asof, weeks, meta, S, rec, bt, te_out, k, (imp / imp.sum()).sort_values(ascending=False))
+    return Result(asof, weeks, meta, S, rec, bt, te_out, k, (imp / imp.sum()).sort_values(ascending=False), interval)

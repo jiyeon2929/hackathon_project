@@ -10,6 +10,7 @@ import streamlit as st
 import brandid
 import dataprep
 import engine
+import history
 import identity
 import kosis
 import naver
@@ -23,16 +24,36 @@ st.set_page_config(page_title="BvAi", page_icon="🧵", layout="centered", initi
 
 GREEN_B, BLUE, RED, ORANGE, GREEN, GRAY = "#2F6F5E", "#2563eb", "#dc2626", "#ea580c", "#16a34a", "#94a3b8"
 BRANDS = {
-    "boltwork": ("BOLTWORK", "🛠 스트릿 · 워크웨어", "BW 캔버스 패치 · 트리플 스티치", "블랙 · 카키 · 덕브라운 · 차콜"),
-    "mongle": ("MONGLE", "🎀 러블리 · 큐트", "하트 자수 · 구름 퀼팅 · 리본", "크림 · 아이보리 · 핑크 · 라벤더"),
-    "belmore": ("BELMORE", "🎩 댄디 · 클래식", "헤링본 · 핸드스티치", "네이비 · 차콜 · 그레이"),
+    "boltwork": ("BOLTWORK", "스트릿 · 워크웨어", "BW 캔버스 패치 · 트리플 스티치", "블랙 · 카키 · 덕브라운 · 차콜"),
+    "mongle": ("MONGLE", "러블리 · 큐트", "하트 자수 · 구름 퀼팅 · 리본", "크림 · 아이보리 · 핑크 · 라벤더"),
+    "belmore": ("BELMORE", "댄디 · 클래식", "헤링본 · 핸드스티치", "네이비 · 차콜 · 그레이"),
 }
 LABEL = {"date": "날짜", "product_id": "상품코드", "qty": "판매수량", "product_name": "상품명", "category": "카테고리",
          "color": "컬러", "price": "가격", "size": "사이즈", "produced": "생산수량"}
 SWATCH = {"블랙": "#111827", "카키": "#6b6b3a", "덕브라운": "#7c5a3a", "차콜": "#374151", "네이비": "#1e3a8a",
           "라벤더": "#b4a7d6", "버터옐로우": "#f6e27a", "민트": "#9be3c9", "크림": "#f5ecd7", "핑크": "#f4a7b9",
           "아이보리": "#f8f4e6", "스카이블루": "#8ec5f0", "카멜": "#c19a6b", "그레이": "#9ca3af", "올리브": "#708238",
-          "레드": "#dc2626", "화이트": "#ffffff", "브라운": "#7c5a3a", "베이지": "#d6c4a8", "오트밀": "#e3d9c6"}
+          "레드": "#dc2626", "화이트": "#ffffff", "브라운": "#7c5a3a", "베이지": "#d6c4a8", "오트밀": "#e3d9c6",
+          "옐로우": "#facc15", "블루": "#3b82f6", "바이올렛": "#8b5cf6", "오렌지": "#f97316", "그린": "#22c55e",
+          "퍼플": "#8b5cf6", "와인": "#7f1d1d", "버건디": "#7f1d1d", "아이보리 ": "#f8f4e6", "실버": "#c0c0c0", "골드": "#d4af37",
+          "black": "#111827", "white": "#ffffff", "grey": "#9ca3af", "gray": "#9ca3af", "blue": "#3b82f6", "navy": "#1e3a8a",
+          "red": "#dc2626", "green": "#22c55e", "yellow": "#facc15", "orange": "#f97316", "violet": "#8b5cf6",
+          "purple": "#8b5cf6", "brown": "#7c5a3a", "pink": "#f4a7b9", "beige": "#d6c4a8", "khaki": "#6b6b3a"}
+# 목록에 없는 컬러 이름은 포함된 단어로 추정 (모르면 회색)
+_COLOR_HINT = [("옐로", "#facc15"), ("노랑", "#facc15"), ("블루", "#3b82f6"), ("파랑", "#3b82f6"), ("네이비", "#1e3a8a"),
+               ("그린", "#22c55e"), ("초록", "#22c55e"), ("카키", "#6b6b3a"), ("레드", "#dc2626"), ("빨강", "#dc2626"),
+               ("핑크", "#f4a7b9"), ("오렌지", "#f97316"), ("퍼플", "#8b5cf6"), ("바이올렛", "#8b5cf6"), ("라벤더", "#b4a7d6"),
+               ("브라운", "#7c5a3a"), ("베이지", "#d6c4a8"), ("그레이", "#9ca3af"), ("차콜", "#374151"), ("블랙", "#111827"),
+               ("화이트", "#ffffff"), ("아이보리", "#f8f4e6"), ("크림", "#f5ecd7")]
+
+
+def color_hex(name):
+    n = str(name).strip()
+    if n in SWATCH:
+        return SWATCH[n]
+    if n.lower() in SWATCH:
+        return SWATCH[n.lower()]
+    return next((h for k, h in _COLOR_HINT if k in n), "#adb5bd")
 
 st.markdown("""
 <style>
@@ -107,6 +128,8 @@ header[data-testid="stHeader"] {background:#ffffff; border-bottom:1px solid #eef
 .h-item .t {font-size:1.3rem; font-weight:800; margin-bottom:4px;}
 .h-item .d {font-size:1.02rem; line-height:1.7; color:#495057 !important;}
 .h-verify {font-size:1.1rem; line-height:1.75;}
+.htag {display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; background:#eceef1; margin-left:6px;}
+[class*="st-key-hrow_"] {background:#ffffff; border-radius:12px !important;}
 .diag {font-size:.85rem; padding:8px 12px; border-radius:10px; background:#f8f9fa; border:1px solid #e9ecef; margin:6px 0 12px;}
 .ctitle {font-size:1.1rem; font-weight:800; margin:28px 0 8px;}
 .ctitle small {font-size:.85rem; font-weight:500; margin-left:6px;}
@@ -151,7 +174,7 @@ def won(x):
 
 
 def swatch(c, extra=""):
-    return f'<span class="sw"><i style="background:{SWATCH.get(c, "#ccc")}"></i>{c}{extra}</span>'
+    return f'<span class="sw"><i style="background:{color_hex(c)}"></i>{c}{extra}</span>'
 
 
 def short(n):
@@ -315,10 +338,12 @@ def page_start():
             st.error("생산 기록에서 상품코드와 생산(입고) 수량 열을 찾지 못했어요.")
             prod_up = None
     if df_up is not None and st.button("분석 시작", type="primary"):
-        ss.src, ss.df, ss.name, ss.virtual = "upload", df_up, Path(up.name).stem, False
+        ss.src, ss.df, ss.name, ss.virtual = "upload", df_up, history.clean_name(Path(up.name).stem), False
         ss.prod = prod_up
         ss.brand = next((nm for nm, *_ in BRANDS.values() if nm.lower() in up.name.lower()), None)
+        ss.hist_id = history.save(ss.name, df_up, prod_up, False, ss.brand)
         go_results()
+
 
     st.markdown("##### 예시 브랜드 살펴보기")
     cols = st.columns(3)
@@ -330,19 +355,54 @@ def page_start():
             if st.button(f"{nm} 예시 보기", key=f"b_{slug}", use_container_width=True):
                 ss.src, ss.df, ss.name, ss.virtual = "virtual", load_csv(f"virtual_{slug}.csv"), nm, True
                 ss.prod, ss.brand = load_csv(f"virtual_{slug}_production.csv"), nm
+                ss.hist_id = None          # 예시 브랜드는 분석 기록에 남기지 않음
                 go_results()
     st.write("")
-    st.download_button("📄 판매 기록 양식 받기", load_csv("virtual_boltwork.csv").head(30).to_csv(index=False).encode("utf-8-sig"),
+    st.download_button("판매 기록 양식 받기", load_csv("virtual_boltwork.csv").head(30).to_csv(index=False).encode("utf-8-sig"),
                        "판매기록_양식.csv", "text/csv")
     st.caption("예시 브랜드는 서비스 소개를 위해 만든 가상 데이터입니다. AI의 효과 검증은 H&M 실거래 공개 데이터로 했습니다.")
 
 
 # ================= 분석 결과 =================
+def open_history(m):
+    """저장된 분석 기록을 지금 분석으로 불러오기"""
+    df_h, prod_h, md_h = history.load(m, APP_DIR)
+    ss.src, ss.df, ss.name, ss.virtual = ("virtual" if m.get("virtual") else "upload"), df_h, m["name"], m.get("virtual", False)
+    ss.prod, ss.brand, ss.hist_id = prod_h, m.get("brand"), m["id"]
+    ss.setdefault("md_edits", {})[m["name"]] = md_h
+
+
+def history_label(m):
+    return f"{m['name']} · 분석 {m['analyzed_at'].replace('T', ' ')[:16]}" + (" · 예시" if m.get("virtual") else "")
+
+
+def history_list(prefix, limit=8):
+    hist = history.list_all()
+    if not hist:
+        return
+    st.markdown("##### 최근 분석 기록")
+    for m in hist[:limit]:
+        when = m["analyzed_at"].replace("T", " ")[:16]
+        tag = "예시" if m.get("virtual") else "업로드"
+        with st.container(border=True, key=f"hrow_{prefix}_{m['id']}"):
+            h1, h2, h3 = st.columns([5, 1.3, 1])
+            h1.markdown(f"**{m['name']}** <span class='htag'>{tag}</span><br>"
+                        f"<small>분석 {when} · 기록 {m['start']} ~ {m['end']} · 상품 {m['products']}개"
+                        + (" · 생산 기록 포함" if m.get("has_prod") else "") + "</small>", unsafe_allow_html=True)
+            if h2.button("다시 보기", key=f"hopen_{prefix}_{m['id']}", use_container_width=True):
+                open_history(m)
+                go_results()
+            if h3.button("삭제", key=f"hdel_{prefix}_{m['id']}", use_container_width=True):
+                history.delete(m["id"])
+                st.rerun()
+
+
 def need_data():
     if ss.src is None:
         st.info("아직 분석한 데이터가 없어요. 판매 기록을 올리거나 예시 브랜드를 골라주세요.")
         if st.button("분석 시작으로 가기 →"):
             st.switch_page(PAGE_START)
+        history_list("n")
         st.stop()
 
 
@@ -459,6 +519,19 @@ def page_result():
     rec["사이즈 배분"] = [" · ".join(f"{s} {v}" for s, v in sp.items()) if (sp := size_split(p, int(q))) is not None else ""
                      for p, q in zip(rec.product_id, rec.rec_qty)]
 
+    # 지난 분석 결과로 바로 바꿔 보기
+    hist = history.list_all()
+    ids = [m["id"] for m in hist]
+    cur = ss.get("hist_id") if ss.get("hist_id") in ids else "__now__"
+    opts = ids if cur != "__now__" else ["__now__"] + ids
+    if len(opts) > 1:
+        sel = st.selectbox("분석 기록", opts, index=opts.index(cur), key=f"hist_select_{cur}_{ss.name}",
+                           format_func=lambda i: f"{ss.name} (지금 보는 데이터)" if i == "__now__"
+                           else history_label(next(m for m in hist if m["id"] == i)))
+        if sel != cur:
+            open_history(next(m for m in hist if m["id"] == sel))
+            st.rerun()
+
     top1, top2 = st.columns([4, 1])
     top1.markdown(f"## {ss.name}")
     top1.caption(f"판매 기록 {r.weeks[0]:%Y.%m.%d} ~ {r.asof:%Y.%m.%d} · 상품 {len(r.products)}개 · 판매 중 {len(rec)}개"
@@ -509,7 +582,9 @@ def page_result():
         bul.append(f"사이즈별로 보면 <b>{'·'.join(top2.index)} 사이즈</b>가 판매의 <b>{top2.sum():.0%}</b>예요. "
                    f"사이즈를 똑같이 나눠 만들면 {low} 사이즈는 팔리는 양의 <b>{eq / brand_size[low]:.1f}배</b>를 만들게 돼요. "
                    "추천표의 사이즈 배분을 참고하세요.")
-    bul.append(f"다음 4주 예상 판매 <b>{rec.forecast.sum():,.0f}개</b>. AI 추천대로 만들면 관행 대비 "
+    iv = r.interval or {}
+    rng_txt = (f" (80% 확률로 {iv['total_lo']:,.0f}~{iv['total_hi']:,.0f}개)" if iv else "")
+    bul.append(f"다음 4주 예상 판매 <b>{rec.forecast.sum():,.0f}개</b>{rng_txt}. AI 추천대로 만들면 관행 대비 "
                f"<b>월 약 {save_units:,.0f}벌, {won(save_month)}</b>어치를 덜 남겨요.")
     if len(scmp) and "projection" in scmp:
         s1 = scmp.dropna(subset=["projection"]).copy()
@@ -565,7 +640,7 @@ def page_result():
     md_now = ss.get("md_edits", {}).get(ss.name, {})
     top_rec = rec.sort_values("habit_qty", ascending=False).head(30)
     rows_html = "".join(
-        f"<tr><td>{x.product_name}</td><td>{x.risk}</td><td style='text-align:right'>{x.forecast:,.0f}</td>"
+        f"<tr><td>{x.product_name}</td><td>{x.risk}</td><td style='text-align:right'>{x.forecast:,.0f}<br><small>{x.lo:,.0f}~{x.hi:,.0f}</small></td>"
         f"<td style='text-align:right'>{x.rec_qty:,.0f}</td><td style='text-align:right'>{md_now.get(x.product_id, {}).get('qty', int(x.rec_qty)):,}</td>"
         f"<td>{x['추천 이유']}</td><td>{md_now.get(x.product_id, {}).get('memo', '')}</td></tr>" for _, x in top_rec.iterrows())
     report = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>BvAi 리포트 - {ss.name}</title>
@@ -577,7 +652,7 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
 <p>판매 기록 {r.weeks[0]:%Y.%m.%d} ~ {r.asof:%Y.%m.%d} · 상품 {len(r.products)}개 · 작성일 {pd.Timestamp.today():%Y.%m.%d}</p>
 <h2>AI 분석 요약</h2><div class="box"><ul>{"".join(f"<li>{b}</li>" for b in bul)}</ul></div>
 <h2>이번 달 할 일</h2>{"".join(f'<div class="todo"><b>{h}</b><br>{d}</div>' for _, h, d in todo)}
-<h2>상품별 추천 생산량 (상위 30개)</h2><table><tr><th>상품</th><th>상태</th><th>다음 4주 예상</th><th>AI 추천</th><th>MD 확정</th><th>추천 이유</th><th>메모</th></tr>{rows_html}</table>
+<h2>상품별 추천 생산량 (상위 30개)</h2><table><tr><th>상품</th><th>상태</th><th>다음 4주 예상<br><small>(80% 범위)</small></th><th>AI 추천</th><th>MD 확정</th><th>추천 이유</th><th>메모</th></tr>{rows_html}</table>
 <p style="color:#868e96;font-size:12px">BvAi · AI 추천 생산 = 다음 4주 예상 수요 × 여유분(허용 품절률 {ss.target:.0%} 기준)</p></body></html>"""
     st.download_button("팀 공유용 리포트 내려받기", report.encode("utf-8"), f"BvAi_리포트_{ss.name}.html", "text/html",
                        help="브라우저에서 열고 인쇄하면 PDF로도 저장할 수 있어요")
@@ -615,7 +690,7 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
         cr = colors.copy()
         fig = go.Figure()
         fig.add_bar(x=cr.index, y=cr.produced, name="생산", marker_color="#cbd5e1")
-        fig.add_bar(x=cr.index, y=cr.sold, name="판매", marker_color=[SWATCH.get(c, BLUE) for c in cr.index],
+        fig.add_bar(x=cr.index, y=cr.sold, name="판매", marker_color=[color_hex(c) for c in cr.index],
                     marker_line=dict(color="rgba(0,0,0,.35)", width=1), text=[f"{v:.0%}" for v in cr.sell_through], textposition="outside")
         fig.update_layout(barmode="overlay", height=340, margin=dict(l=10, r=10, t=60, b=10),
                           legend=dict(orientation="h", y=1.0, yanchor="bottom", x=0),
@@ -724,6 +799,7 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
             "상태": view.risk.map({"과잉생산 위험": "🔴 줄이기", "품절 위험": "🟠 늘리기", "적정": "🟢 적정"}).values,
             "상품": view.product_name.values,
             "다음 4주 예상": view.forecast.round(0).astype(int).values,
+            "예상 범위(80%)": [f"{a:,.0f}~{b:,.0f}" for a, b in zip(view.lo, view.hi)],
             "AI 추천 생산": view.rec_qty.astype(int).values,
             "MD 확정": [md.get(p, {}).get("qty", int(q)) for p, q in zip(view.product_id, view.rec_qty)],
             "메모": [md.get(p, {}).get("memo", "") for p in view.product_id],
@@ -731,7 +807,9 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
             "추천 이유": view["추천 이유"].values,
             "신뢰도": view["신뢰도"].values,
             "관행대로면": view.habit_qty.astype(int).values})
-        st.caption("AI 추천 생산 = 다음 4주 예상 수요 × 여유분(허용 품절률 기준). "
+        st.caption("예상 범위(80%) = 지난 12주 동안 AI 예측이 실제와 어긋난 정도로 계산한 구간이에요. "
+                   + (f"과거 기록으로 확인해보니 실제 판매의 {iv['coverage']:.0%}가 이 범위 안에 들어왔어요. " if iv else "")
+                   + "AI 추천 생산 = 다음 4주 예상 수요 × 여유분(허용 품절률 기준). "
                    "**MD 확정**과 **메모** 칸은 직접 고칠 수 있어요. 고친 값은 내려받는 파일에 함께 저장돼요.")
         edited = st.data_editor(
             tb, hide_index=True, width="stretch", key=f"md_editor_{ss.name}",
@@ -745,6 +823,7 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
                 md[e["상품코드"]] = {"qty": int(e["MD 확정"]), "memo": e["메모"]}
             else:
                 md.pop(e["상품코드"], None)
+        history.save_md(ss.get("hist_id"), md)
         n_changed = sum(1 for v in md.values() if v)
         if n_changed:
             st.caption(f"MD가 직접 고친 상품 {n_changed}개 · AI 추천 합계 {int(edited['AI 추천 생산'].sum()):,}개 → "
@@ -759,11 +838,14 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
         fx = [r.asof + pd.Timedelta(weeks=k) for k in range(1, 5)]
         fig = go.Figure()
         fig.add_bar(x=r.weeks[-26:], y=r.S[i, -26:], name="실제 주간 판매", marker_color=GRAY)
-        fig.add_bar(x=fx, y=[row.forecast / 4] * 4, name="AI 예측", marker_color=GREEN_B)
+        fig.add_bar(x=fx, y=[row.forecast / 4] * 4, name="AI 예측 (선 = 80% 범위)", marker_color=GREEN_B,
+                    error_y=dict(type="data", symmetric=False, array=[(row.hi - row.forecast) / 4] * 4,
+                                 arrayminus=[(row.forecast - row.lo) / 4] * 4, color="#495057", thickness=1.5, width=6))
         fig.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.12), bargap=.15)
         st.plotly_chart(fig, width="stretch")
         st.markdown(f"**{row.product_name}** ({row.design} · {row.color_group} 컬러) · 최근 4주 {row.last4:,.0f}개 → "
-                    f"다음 4주 **{row.forecast:,.0f}개** ({row.trend:+.0%}) · 추천 생산 **{row.rec_qty:,.0f}개**")
+                    f"다음 4주 **{row.forecast:,.0f}개** ({row.trend:+.0%}, 80% 범위 {row.lo:,.0f}~{row.hi:,.0f}개) · "
+                    f"추천 생산 **{row.rec_qty:,.0f}개**")
         st.caption(f"추천 이유: {row['추천 이유']} · 예측 신뢰도 {row['신뢰도']}")
         sp = size_split(pid, int(row.rec_qty))
         if sp is not None:
@@ -862,6 +944,33 @@ def page_check():
                    "전체 3,179만 건 검증에서는 '지난주 판매 기준 생산' 대비 17~31% 감소.")
     except Exception as e:
         st.caption(f"H&M 검증 불러오기 실패: {e}")
+
+    # ---- VISUELLE 2.0: 이탈리아 패스트패션 브랜드 실데이터 (판매 + 공급량 + 할인) ----
+    vp = APP_DIR / "visuelle_results.json"
+    if vp.exists():
+        import json
+        v = json.loads(vp.read_text(encoding="utf-8"))
+        npr, sc = v["new_product"], v["scope"]
+        st.markdown('<div class="ctitle">신상품 첫 물량 검증 <small>이탈리아 패스트패션 브랜드 Nunalie 실데이터</small></div>',
+                    unsafe_allow_html=True)
+        st.markdown(f"2019년 신상품 **{npr['test_products']:,}개**를 2017~2018년 같은 카테고리 상품의 출시 후 12주 판매로 예측했어요. "
+                    f"브랜드가 실제로 매장에 보낸 양은 판매와 <b>{npr['brand_wape']:.0%}</b> 차이가 났지만, "
+                    f"BvAi 방식은 <b>{npr['analog_wape']:.0%}</b> 차이로 실제 판매에 더 가까웠어요.", unsafe_allow_html=True)
+        fig = go.Figure(go.Bar(x=["브랜드 실제 공급량", "BvAi 방식 예측"], y=[npr["brand_wape"], npr["analog_wape"]],
+                               text=[f"{npr['brand_wape']:.0%}", f"{npr['analog_wape']:.0%}"], textposition="outside",
+                               marker_color=["#cbd5e1", GREEN_B]))
+        fig.update_layout(height=250, margin=dict(l=10, r=10, t=30, b=10), yaxis=dict(tickformat=".0%", range=[0, 0.6]),
+                          title=dict(text="실제 판매와의 차이 (낮을수록 정확)", font=dict(size=13)))
+        st.plotly_chart(fig, width="stretch")
+        st.markdown(f"남는 재고로 바꾸면 **품절을 얼마나 감수하느냐에 따라 달라요.** 판매의 10%를 놓치는 걸 감수하면 "
+                    f"남는 재고가 <b>{npr['reduction_short10']:.0%} 줄고</b>, 5%만 놓치려 하면 오히려 "
+                    f"{abs(npr['reduction_short5']):.0%} 늘어요. 그래서 BvAi는 첫 물량을 예측의 일부만 먼저 만들고 "
+                    f"판매 반응을 보며 추가하는 방식을 권해요.", unsafe_allow_html=True)
+        st.caption(f"출처: VISUELLE 2.0 — Skenderi et al., CVPR Workshops 2022 (CC BY-NC-SA 4.0). 상품 {sc['products']:,}개 · "
+                   f"매장 {sc['shops']}곳 · {len(sc['seasons'])}시즌. 이 데이터에서 출시 후 12주 동안 공급 {sc['supply']:,}개 중 "
+                   f"{sc['sold']:,}개({v['overall']['sell_through']:.0%})가 팔렸어요. "
+                   "같은 데이터에서 주력·비주력 컬러의 판매율 차이는 확인되지 않았어요(66.7% vs 66.6%).")
+
     if ss.src is not None:
         r, *_ = run_current()
         bt = r.backtest.set_index("key")
@@ -871,7 +980,18 @@ def page_check():
 
 
 # ================= 메뉴 =================
-st.logo(str(APP_DIR / "logo.svg"), size="large", link="http://localhost:8501/")
+def _home_url():
+    """지금 접속한 주소(예: localhost:8502, 배포 주소)의 홈으로 가는 링크"""
+    try:
+        h = st.context.headers
+        host = h.get("Host") or h.get("host")
+        proto = h.get("X-Forwarded-Proto") or ("https" if host and not host.startswith(("localhost", "127.")) else "http")
+        return f"{proto}://{host}/" if host else None
+    except Exception:
+        return None
+
+
+st.logo(str(APP_DIR / "logo.svg"), size="large", link=_home_url())
 PAGE_HOME = st.Page(page_home, title="홈", url_path="home", default=True, visibility="hidden")
 PAGE_START = st.Page(page_start, title="분석 시작", url_path="start", visibility="hidden")
 PAGE_RESULT = st.Page(page_result, title="분석 결과", url_path="result")

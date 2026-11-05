@@ -61,16 +61,21 @@ def analyze(r, df_raw):
     if "price" in df_raw.columns:
         d = df_raw.copy()
         d["date"] = pd.to_datetime(d["date"]); d["product_id"] = d["product_id"].astype(str)
-        d = d.sort_values("date")
+        d["qty"] = pd.to_numeric(d["qty"], errors="coerce").fillna(0).clip(lower=0)   # 반품(음수)은 가격 계산에서 제외
+        d = d[d.qty > 0].sort_values("date")
         g = d.groupby("product_id")
-        first_p = g.apply(lambda x: np.average(x.price[x.date < x.date.min() + pd.Timedelta(weeks=4)],
-                                               weights=x.qty[x.date < x.date.min() + pd.Timedelta(weeks=4)]))
-        last_p = g.apply(lambda x: np.average(x.price[x.date > x.date.max() - pd.Timedelta(weeks=4)],
-                                              weights=x.qty[x.date > x.date.max() - pd.Timedelta(weeks=4)]))
+
+        def wavg(p, w):
+            return float(np.average(p, weights=w)) if len(p) and w.sum() > 0 else (float(p.mean()) if len(p) else np.nan)
+
+        first_p = g.apply(lambda x: wavg(x.price[x.date < x.date.min() + pd.Timedelta(weeks=4)],
+                                         x.qty[x.date < x.date.min() + pd.Timedelta(weeks=4)]))
+        last_p = g.apply(lambda x: wavg(x.price[x.date > x.date.max() - pd.Timedelta(weeks=4)],
+                                        x.qty[x.date > x.date.max() - pd.Timedelta(weeks=4)]))
         # 할인 판매 비중: 정가(최고가)의 90% 미만으로 팔린 수량 비율
         full = g.price.transform("max")
         d["disc"] = d.price < full * 0.9
-        disc_share = d.groupby("product_id").apply(lambda x: (x.qty * x.disc).sum() / x.qty.sum())
+        disc_share = d.groupby("product_id").apply(lambda x: (x.qty * x.disc).sum() / max(x.qty.sum(), 1))
         cls["discount_depth"] = 1 - cls.product_id.map(last_p / first_p)
         cls["discount_share"] = cls.product_id.map(disc_share)
         for t in (CORE, TREND):

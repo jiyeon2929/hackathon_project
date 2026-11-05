@@ -171,10 +171,11 @@ def make(slug, cfg, seed):
     return df.drop_duplicates("product_id")[["product_name", "category", "color"]].assign(brand=cfg["name"])
 
 
-cats = [make(slug, cfg, 200 + i) for i, (slug, cfg) in enumerate(BRANDS.items())]
-# 시장 상품 목록: 세 브랜드 + 시장에 흔한 유행 디자인 (다른 브랜드들)
-extra = pd.DataFrame([(f"{nm} / -", c, "-", f"시장 브랜드 {k}") for k in "ABCDE"
-                      for nm, c in COMMON + [(s[0], s[1]) for s in STAPLES]],
-                     columns=["product_name", "category", "color", "brand"])
-pd.concat(cats + [extra]).to_csv(OUT / "market_catalog.csv", index=False, encoding="utf-8-sig")
-print("market_catalog 저장")
+if __name__ == "__main__":
+    cats = [make(slug, cfg, 200 + i) for i, (slug, cfg) in enumerate(BRANDS.items())]
+    # 시장 상품 목록: 세 브랜드 + 시장에 흔한 유행 디자인 (다른 브랜드들)
+    extra = pd.DataFrame([(f"{nm} / -", c, "-", f"시장 브랜드 {k}") for k in "ABCDE"
+                          for nm, c in COMMON + [(s[0], s[1]) for s in STAPLES]],
+                         columns=["product_name", "category", "color", "brand"])
+    pd.concat(cats + [extra]).to_csv(OUT / "market_catalog.csv", index=False, encoding="utf-8-sig")
+    print("market_catalog 저장")

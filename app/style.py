@@ -4,9 +4,11 @@ import numpy as np
 import pandas as pd
 
 STYLES = {
-    "스트릿": ["워크", "카고", "후드", "오버핏", "그래픽", "로고", "비니", "캔버스", "카펜터", "스웻", "트랙", "바시티",
+    "스포티": ["트랙", "트레이닝", "저지", "러닝", "테크", "윈드브레이커", "애슬레저", "스포츠", "기능성", "드라이",
+             "track", "training", "jersey", "running", "tech", "windbreaker", "athletic", "sport"],
+    "스트릿": ["워크", "카고", "후드", "오버핏", "그래픽", "로고", "비니", "캔버스", "카펜터", "스웻", "바시티",
              "파카", "셰르파", "고프코어", "바람막이", "바라클라바", "조거", "나일론",
-             "work", "cargo", "hood", "graphic", "logo", "beanie", "canvas", "carpenter", "track", "varsity", "parka", "jogger"],
+             "work", "cargo", "hood", "graphic", "logo", "beanie", "canvas", "carpenter", "varsity", "parka", "jogger"],
     "러블리": ["레이스", "리본", "프릴", "퍼프", "플라워", "셔링", "하트", "발레", "플리츠", "테니스", "뽀글이", "앙고라",
              "핑크", "베이비", "볼레로", "스모크",
              "lace", "ribbon", "frill", "puff", "floral", "flower", "heart", "ballet", "pleat", "smock", "teddy"],
@@ -16,8 +18,8 @@ STYLES = {
     "미니멀": ["베이직", "무지", "린넨", "코튼", "스트레이트", "basic", "linen", "cotton", "straight", "plain"],
     "Y2K·유행": ["y2k", "로우라이즈", "크롭", "시스루", "메탈릭", "벌룬", "low-rise", "lowrise", "crop", "metallic", "balloon"],
 }
-ICON = {"스트릿": "🛠", "러블리": "🎀", "댄디": "🎩", "미니멀": "⚪", "Y2K·유행": "✨", "기타": "·"}
-PRIORITY = ["스트릿", "러블리", "댄디", "미니멀", "Y2K·유행"]   # 동점이면 앞쪽 (유행 키워드보다 고유 스타일 우선)
+ICON = {"스포티": "🏃", "스트릿": "🛠", "러블리": "🎀", "댄디": "🎩", "미니멀": "⚪", "Y2K·유행": "✨", "기타": "·"}
+PRIORITY = ["스포티", "스트릿", "러블리", "댄디", "미니멀", "Y2K·유행"]   # 동점이면 앞쪽 (유행 키워드보다 고유 스타일 우선)
 
 
 def style_of(name):
