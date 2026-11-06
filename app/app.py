@@ -163,6 +163,10 @@ header[data-testid="stHeader"] {background:#ffffff; border-bottom:1px solid #eef
        background:rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.3);}
 </style>""", unsafe_allow_html=True)
 
+@st.cache_data(show_spinner=False)
+def load_csv(name):
+  return pd.read_csv(APP_DIR / name, dtype={"product_id": str})
+
 
 # ---------------- 도우미 ----------------
 def kpi(col, label, value, sub=""):
