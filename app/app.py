@@ -736,23 +736,32 @@ table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border:1px so
         for msg in chat:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
+        # 공유 API 예산을 지키기 위해 한 접속(브라우저 탭)당 질문 횟수 제한
+        ASK_LIMIT = 10
+        used = ss.get("ask_count", 0)
+        left = ASK_LIMIT - used
         ex_cols = st.columns(3)
         examples = ["이번 달 가장 먼저 해야 할 일은?", "유행 복제 상품은 왜 문제야?", "이번 겨울 시즌은 어떻게 준비해?"]
         picked = None
         for c_, q_ in zip(ex_cols, examples):
-            if c_.button(q_, key=f"ex_{q_}", use_container_width=True):
+            if c_.button(q_, key=f"ex_{q_}", use_container_width=True, disabled=left <= 0):
                 picked = q_
         with st.form("ask_form", clear_on_submit=True, border=False):
             f1, f2 = st.columns([5, 1], vertical_alignment="bottom")
-            q = f1.text_input("질문", placeholder="예: 네이비 컬러는 얼마나 더 만들면 돼?", label_visibility="collapsed")
-            sent = f2.form_submit_button("물어보기", use_container_width=True)
+            q = f1.text_input("질문", placeholder="예: 네이비 컬러는 얼마나 더 만들면 돼?", label_visibility="collapsed",
+                              disabled=left <= 0)
+            sent = f2.form_submit_button("물어보기", use_container_width=True, disabled=left <= 0)
+        st.caption(f"남은 질문 {max(left, 0)}번 (한 번 접속에 {ASK_LIMIT}번까지 물어볼 수 있어요)" if left > 0
+                   else f"이번 접속에서 물어볼 수 있는 {ASK_LIMIT}번을 모두 썼어요. 새로고침하면 다시 쓸 수 있어요.")
         question = picked or (q.strip() if sent and q.strip() else None)
-        if question:
+        if question and left > 0:
             with st.spinner("AI가 분석 결과를 보고 답하는 중이에요..."):
                 try:
                     ans = assistant.ask(question, context_text, chat)
-                except Exception as e:
-                    ans = f"지금은 답할 수 없어요. ({e})"
+                    ss.ask_count = used + 1        # 답이 온 질문만 횟수에 포함
+                except Exception:
+                    # 공개 화면에는 서버 오류 내용(프로젝트 번호 등)을 그대로 보이지 않음
+                    ans = "지금은 AI가 답할 수 없어요. 잠시 뒤에 다시 물어봐 주세요."
             chat += [{"role": "user", "content": question}, {"role": "assistant", "content": ans}]
             st.rerun()
         if chat and st.button("대화 지우기", key="chat_clear"):
